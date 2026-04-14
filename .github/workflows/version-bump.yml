@@ -1,0 +1,134 @@
+name: Version Bump
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'VERSION'
+      - 'CHANGELOG.md'
+      - '.github/**'
+
+jobs:
+  version-bump:
+    runs-on: windows-latest
+    # Only run if commit message contains version bump indicator
+    if: contains(github.event.head_commit.message, '[major]') || contains(github.event.head_commit.message, '[minor]') || contains(github.event.head_commit.message, '[patch]')
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Read current version
+        id: current_version
+        shell: pwsh
+        run: |
+          $version = Get-Content VERSION -Raw
+          $version = $version.Trim()
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Current version: $version"
+      
+      - name: Determine bump type
+        id: bump_type
+        shell: pwsh
+        run: |
+          $commitMsg = "${{ github.event.head_commit.message }}"
+          
+          if ($commitMsg -match '\[major\]') {
+            $bumpType = "major"
+          } elseif ($commitMsg -match '\[minor\]') {
+            $bumpType = "minor"
+          } else {
+            $bumpType = "patch"
+          }
+          
+          Write-Output "type=$bumpType" >> $env:GITHUB_OUTPUT
+          Write-Host "Bump type: $bumpType"
+      
+      - name: Calculate new version
+        id: new_version
+        shell: pwsh
+        run: |
+          $current = "${{ steps.current_version.outputs.version }}"
+          $bumpType = "${{ steps.bump_type.outputs.type }}"
+          
+          $parts = $current -split '\.'
+          $major = [int]$parts[0]
+          $minor = [int]$parts[1]
+          $patch = [int]$parts[2]
+          
+          switch ($bumpType) {
+            "major" {
+              $major++
+              $minor = 0
+              $patch = 0
+            }
+            "minor" {
+              $minor++
+              $patch = 0
+            }
+            "patch" {
+              $patch++
+            }
+          }
+          
+          $newVersion = "$major.$minor.$patch"
+          Write-Output "version=$newVersion" >> $env:GITHUB_OUTPUT
+          Write-Host "New version: $newVersion"
+      
+      - name: Update VERSION file
+        shell: pwsh
+        run: |
+          $newVersion = "${{ steps.new_version.outputs.version }}"
+          Set-Content -Path VERSION -Value $newVersion -NoNewline
+          Write-Host "Updated VERSION file to $newVersion"
+      
+      - name: Update CHANGELOG
+        shell: pwsh
+        run: |
+          $newVersion = "${{ steps.new_version.outputs.version }}"
+          $date = Get-Date -Format "yyyy-MM-dd"
+          
+          $changelog = Get-Content CHANGELOG.md -Raw
+          
+          # Replace [Unreleased] section header with new version
+          $changelog = $changelog -replace '## \[Unreleased\]', "## [Unreleased]`n`n### Added`n### Changed`n### Deprecated`n### Removed`n### Fixed`n### Security`n`n## [$newVersion] - $date"
+          
+          # Update comparison links at bottom
+          $changelog = $changelog -replace '\[Unreleased\]: (.+)/compare/v(.+)\.\.\.HEAD', "[Unreleased]: `$1/compare/v$newVersion...HEAD`n[$newVersion]: `$1/compare/v`$2...v$newVersion"
+          
+          Set-Content -Path CHANGELOG.md -Value $changelog -NoNewline
+          Write-Host "Updated CHANGELOG.md"
+      
+      - name: Commit version bump
+        shell: pwsh
+        run: |
+          $newVersion = "${{ steps.new_version.outputs.version }}"
+          
+          git add VERSION CHANGELOG.md
+          git commit -m "chore: bump version to $newVersion [skip ci]"
+          git push origin main
+          
+          Write-Host "Committed and pushed version bump"
+      
+      - name: Create and push tag
+        shell: pwsh
+        run: |
+          $newVersion = "${{ steps.new_version.outputs.version }}"
+          $tag = "v$newVersion"
+          
+          git tag -a $tag -m "Release $tag"
+          git push origin $tag
+          
+          Write-Host "Created and pushed tag: $tag"

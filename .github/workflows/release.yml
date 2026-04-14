@@ -1,0 +1,86 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          Write-Output "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Output "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Version: $version"
+          Write-Host "Tag: $tag"
+      
+      - name: Extract changelog for version
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $changelog = Get-Content CHANGELOG.md -Raw
+          
+          # Extract the section for this version
+          $pattern = "## \[$version\][\s\S]*?(?=## \[|$)"
+          if ($changelog -match $pattern) {
+            $releaseNotes = $Matches[0]
+            # Remove the version header line
+            $releaseNotes = $releaseNotes -replace "## \[$version\] - \d{4}-\d{2}-\d{2}\s*", ""
+            $releaseNotes = $releaseNotes.Trim()
+          } else {
+            $releaseNotes = "Release $version"
+          }
+          
+          # Save to file for GitHub Actions
+          $releaseNotes | Set-Content -Path release-notes.txt -NoNewline
+          Write-Host "Extracted release notes:"
+          Write-Host $releaseNotes
+      
+      - name: Create skill package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $skillName = "dataverse-plugins-unit-testing"
+          $packageName = "${skillName}-v${version}.zip"
+          
+          # Create a zip of the skill folder
+          Compress-Archive -Path "dataverse-plugins-unit-testing\*" -DestinationPath $packageName -CompressionLevel Optimal
+          
+          Write-Output "package_name=$packageName" >> $env:GITHUB_OUTPUT
+          Write-Host "Created package: $packageName"
+        id: package
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body_path: release-notes.txt
+          files: ${{ steps.package.outputs.package_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Cleanup
+        shell: pwsh
+        run: |
+          Remove-Item release-notes.txt -ErrorAction SilentlyContinue
+          Write-Host "Release created successfully!"
