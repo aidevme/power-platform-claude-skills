@@ -1,4 +1,4 @@
-name: Version Bump
+name: Automated Version Increment and Tagging
 
 on:
   push:
