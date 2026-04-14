@@ -1,0 +1,13 @@
+# Make Markdown files detectable in GitHub language statistics
+*.md linguist-detectable
+
+# Mark documentation that should not count toward language stats
+CHANGELOG.md linguist-documentation
+LICENSE linguist-documentation
+
+# GitHub Actions workflows
+*.yml linguist-detectable
+*.yaml linguist-detectable
+
+# Exclude generated or vendored files if any exist
+docs/references/** linguist-documentation
