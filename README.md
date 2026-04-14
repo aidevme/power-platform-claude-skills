@@ -1,5 +1,11 @@
 # Power Platform Skills for Claude Code
 
+![GitHub release](https://img.shields.io/github/v/release/aidevme/power-platform-claude-skills)
+![GitHub license](https://img.shields.io/github/license/aidevme/power-platform-claude-skills)
+![Automated Version Increment and Tagging](https://github.com/aidevme/power-platform-claude-skills/workflows/Automated%20Version%20Increment%20and%20Tagging/badge.svg)
+![Power Platform](https://img.shields.io/badge/Power%20Platform-Dataverse-742774)
+![Claude Skills](https://img.shields.io/badge/Claude-Skills-orange)
+
 A domain skill that gives [Claude Code](https://claude.ai/claude-code) deep knowledge of unit testing Microsoft Dataverse plugins with the FakeXrmEasy framework.
 
 ## Skill
