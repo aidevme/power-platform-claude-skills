@@ -1,0 +1,69 @@
+name: 🐛 Bug Report
+description: Report incorrect or missing information in the skill documentation
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please fill out the information below.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the skill is affected?
+      options:
+        - Skill documentation (SKILL.md)
+        - Testing patterns
+        - Setup instructions
+        - Sample code
+        - FakeXrmEasy configuration
+        - Pipeline simulation
+        - Entity images
+        - Mocking patterns
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What's wrong? What did you expect to happen?
+      placeholder: Clear description of the issue...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Follow installation instructions...
+        2. Try to test a plugin with...
+        3. See error or incorrect behavior...
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Environment details, Claude Code version, etc.
+      placeholder: |
+        - Claude Code version: 
+        - FakeXrmEasy version:
+        - .NET version:
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Code Snippets
+      description: Add any relevant screenshots, error messages, or code snippets
+      placeholder: Paste screenshots or code here...
+    validations:
+      required: false

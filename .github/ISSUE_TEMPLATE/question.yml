@@ -1,0 +1,64 @@
+name: ❓ Question
+description: Ask a question about using the skill
+title: "[Question]: "
+labels: ["question", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help!
+        
+        **Note:** For general discussions, consider using [GitHub Discussions](https://github.com/aidevme/power-platform-claude-skills/discussions) instead.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What is your question about?
+      options:
+        - Installation and setup
+        - Using the skill with Claude Code
+        - FakeXrmEasy framework
+        - Testing patterns
+        - Pipeline simulation
+        - Entity images
+        - Mocking external dependencies
+        - Query testing
+        - Code Activities
+        - Integration with CI/CD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+      placeholder: Ask your question here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What Have You Tried?
+      description: What have you already attempted?
+      placeholder: |
+        - Checked documentation sections...
+        - Tried this approach...
+        - Reviewed sample code...
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Any additional context about your question
+      placeholder: |
+        - Project details
+        - Current setup
+        - What you're trying to achieve
+    validations:
+      required: false

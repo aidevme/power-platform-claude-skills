@@ -1,0 +1,62 @@
+name: 📚 Documentation Issue
+description: Report unclear, incorrect, or missing documentation
+title: "[Docs]: "
+labels: ["documentation", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve the documentation! Let us know what's unclear or missing.
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Issue Severity
+      description: How does this affect you?
+      options:
+        - Critical - Blocks using the skill
+        - High - Significantly impacts understanding
+        - Medium - Causes confusion
+        - Low - Minor improvement
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: File/Section Location
+      description: Where is the documentation issue? (e.g., SKILL.md line 123, setup-configuration.md)
+      placeholder: "Example: dataverse-plugins-unit-testing/SKILL.md, line 45"
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What's Wrong?
+      description: Describe the documentation issue
+      placeholder: |
+        - Is information missing?
+        - Is something unclear or confusing?
+        - Is there an error or typo?
+        - Is the example incorrect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested Improvement
+      description: How should this be improved?
+      placeholder: Describe how you'd like to see this improved...
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any additional context that might help
+      placeholder: Add any other context about the documentation issue...
+    validations:
+      required: false
