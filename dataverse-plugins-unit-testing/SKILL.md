@@ -13,6 +13,12 @@ description: >
   "test QueryExpression", "test LINQ", "ILogger testing", "migrate FakeXrmEasy".
 license: MIT
 compatibility: "FakeXrmEasy 2.x (.NET Framework), 3.x (.NET Core 3.1), xUnit/NUnit/MSTest"
+allowed-tools:
+  - run_in_terminal
+  - read_file
+  - create_file
+  - replace_string_in_file
+  - list_dir
 metadata:
   author: custom
   version: "1.0.0"
@@ -33,8 +39,10 @@ entity images, and how to mock complex plugin scenarios.
    Dataverse connection when a unit test will suffice. FakeXrmEasy provides an in-memory context
    that executes plugins against fake data.
 
-2. **Always inherit from `FakeXrmEasyTestsBase`.** This provides `_context` and `_service` fields
-   pre-configured with the middleware pipeline. Don't recreate the context in every test method.
+2. **Always build the context via `MiddlewareBuilder`.** `FakeXrmEasyTestsBase` does NOT exist in
+   FakeXrmEasy v2.x or v3.x NuGet packages — do not reference it. Create `_context` once per class
+   using `MiddlewareBuilder.New().AddCrud().SetLicense(FakeXrmEasyLicense.RPL_1_5).Build()`.
+   Never recreate the context in every test method.
 
 3. **Test plugins in isolation.** Mock external dependencies. Don't make real HTTP calls, database
    connections, or file system operations in unit tests.
@@ -61,10 +69,11 @@ entity images, and how to mock complex plugin scenarios.
 | Concept | FakeXrmEasy Approach |
 |---|---|
 | Install package | `Install-Package FakeXrmEasy.Plugins.v9 -Version 2.x` (Framework) / `3.x` (Core) |
-| Base test class | Inherit from `FakeXrmEasyTestsBase` |
+| Build context | `MiddlewareBuilder.New().AddCrud().SetLicense(FakeXrmEasyLicense.RPL_1_5).Build()` |
 | In-memory data | `_context.Initialize(new[] { account1, contact1 })` |
 | Execute plugin | `_context.ExecutePluginWith<MyPlugin>(pluginContext)` |
-| Simple execution | `_context.ExecutePluginWithTarget<MyPlugin>(targetEntity)` |
+| Execute (simple) | `_context.ExecutePluginWithTarget<MyPlugin>(target, "Create", 20)` |
+| Execute with PreImage | Build `XrmFakedPluginExecutionContext` with `PreEntityImages` set; call `ExecutePluginWith<T>` |
 | Pipeline simulation | `_context.RegisterPluginStep<MyPlugin>("Create", stage)` |
 | Entity images | Register with `PluginImageDefinition` in `RegisterPluginStep` |
 | Query results | `_context.CreateQuery<Account>().Where(a => a.Name == "test")` |
@@ -80,31 +89,86 @@ entity images, and how to mock complex plugin scenarios.
 
 ## Test Anatomy (AAA Pattern)
 
-Every plugin unit test follows the Arrange-Act-Assert pattern:
+Every plugin unit test follows the Arrange-Act-Assert pattern. Build `_context` once in the
+constructor via `MiddlewareBuilder` — **`FakeXrmEasyTestsBase` does not exist in v2.x/v3.x**.
 
 ```csharp
+// Context setup (once per class — NOT in each test)
+private readonly IXrmFakedContext _context;
+
+public AccountNumberPluginTests()
+{
+    _context = MiddlewareBuilder
+        .New()
+        .AddCrud()
+        .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+        .Build();
+}
+
 [Fact]
 public void When_Account_Created_Should_Set_Account_Number()
 {
-    // ARRANGE: Setup in-memory data and plugin context
-    var accountId = Guid.NewGuid();
-    var target = new Account { Id = accountId, Name = "Contoso" };
-    
-    var pluginContext = _context.GetDefaultPluginContext();
-    pluginContext.InputParameters["Target"] = target;
-    pluginContext.MessageName = "Create";
-    pluginContext.Stage = 20; // PreOperation
-    
-    // ACT: Execute the plugin
+    // ARRANGE: build target and plugin context
+    var target = new Entity("account") { Id = Guid.NewGuid(), ["name"] = "Contoso" };
+
+    var pluginContext = new XrmFakedPluginExecutionContext
+    {
+        MessageName      = "Create",
+        Stage            = 20, // PreOperation
+        InputParameters  = new ParameterCollection { { "Target", target } },
+        PreEntityImages  = new EntityImageCollection(),
+        PostEntityImages = new EntityImageCollection()
+    };
+
+    // ACT
     _context.ExecutePluginWith<AccountNumberPlugin>(pluginContext);
-    
-    // ASSERT: Verify the expected behavior
-    Assert.NotNull(target.AccountNumber);
-    Assert.StartsWith("ACC-", target.AccountNumber);
+
+    // ASSERT: PreOperation plugin mutates Target directly — assert on the same reference
+    Assert.True(target.Contains("accountnumber"));
+    Assert.StartsWith("ACC-", target["accountnumber"] as string);
 }
 ```
 
+### Shorthand for simple plugins (no PreImage needed)
+
+```csharp
+// messageName and stage are required parameters in v2.x/v3.x
+_context.ExecutePluginWithTarget<AccountNumberPlugin>(target, "Create", 20);
+```
+
+### Passing a PreImage
+
+Use `XrmFakedPluginExecutionContext` directly — `ExecutePluginWithTargetAndPreEntityImages` is
+`[Obsolete]` in v2.6+:
+
+```csharp
+var pluginContext = new XrmFakedPluginExecutionContext
+{
+    MessageName      = "Update",
+    Stage            = 20,
+    InputParameters  = new ParameterCollection { { "Target", target } },
+    PreEntityImages  = new EntityImageCollection { { "PreImage", preImage } },
+    PostEntityImages = new EntityImageCollection()
+};
+_context.ExecutePluginWith<ContactStatusPlugin>(pluginContext);
+```
+
 ## Workflow
+
+### 0. Analyze the Plugin First
+
+Before writing any test code, read the plugin source and extract these signals:
+- **Registration**: entity, message, stage (PreValidation=10 / PreOperation=20 / PostOperation=40)
+- **Target type**: `Entity` (Create/Update) or `EntityReference` (Delete)
+- **Images**: does it read `PreEntityImages` or `PostEntityImages`?
+- **DI**: does the constructor accept an interface? → create a mock inner class
+- **Service calls**: `RetrieveMultiple` / `Create` / `Update` / `Delete` → mock or seed context
+- **Throws**: every `throw InvalidPluginExecutionException` needs 3 tests (happy, throws, message)
+- **Guards**: every early `return` (entity guard, filtering attribute guard, depth guard) needs 1 test
+- **Constructor guard**: `param ?? throw ArgumentNullException` needs 1 null-argument test
+
+See `resources/plugin-analysis-test-generation.md` for the complete decision tree and worked
+examples for Create, Update, and Delete plugins.
 
 ### 1. Setup Test Project
 
@@ -113,15 +177,27 @@ public void When_Account_Created_Should_Set_Account_Number()
 - Reference your plugin assembly
 - Optionally generate early-bound entities with `pac modelbuilder build`
 
-### 2. Create Base Test Class
+### 2. Create Context in Constructor
 
-Inherit from `FakeXrmEasyTestsBase` to get pre-configured context:
+`FakeXrmEasyTestsBase` does NOT exist in v2.x/v3.x. Build context via `MiddlewareBuilder`:
 
 ```csharp
-public class MyPluginTests : FakeXrmEasyTestsBase
+public class MyPluginTests
 {
+    private readonly IXrmFakedContext _context;
+    private readonly IOrganizationService _service;
+
     public MyPluginTests()
     {
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+
+        _service = _context.GetOrganizationService();
+
+        // Optional: enable early-bound entities
         _context.EnableProxyTypes(Assembly.GetExecutingAssembly());
     }
 }
@@ -130,9 +206,9 @@ public class MyPluginTests : FakeXrmEasyTestsBase
 ### 3. Write Test Cases
 
 For each plugin scenario:
-- **Arrange**: Create test data, configure plugin context, set images
-- **Act**: Execute plugin with `ExecutePluginWith` or `ExecutePluginWithTarget`
-- **Assert**: Query context or inspect Target to verify behavior
+- **Arrange**: Create test data, configure `XrmFakedPluginExecutionContext`, set `PreEntityImages`
+- **Act**: Execute plugin with `ExecutePluginWith<T>(pluginContext)` (preferred) or `ExecutePluginWithTarget<T>` (simple cases)
+- **Assert**: Inspect Target reference (PreOperation) or query context (PostOperation)
 
 ### 4. Test Pipeline Simulation (Advanced)
 
@@ -160,6 +236,9 @@ _service.Create(new Account { Name = "Test" });
 ```
 
 ## Resource Files
+
+### Test Generation
+- `resources/plugin-analysis-test-generation.md` — Read a plugin and derive a complete test suite: analysis checklist, signal→pattern decision tree, required test categories, worked examples for Create/Update/Delete plugins
 
 ### Core Testing Patterns
 - `resources/setup-configuration.md` — Install packages, project structure, test runners, early-bound setup

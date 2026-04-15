@@ -11,11 +11,43 @@ Every good unit test follows three phases:
 2. **Act** — Execute the plugin against the test context
 3. **Assert** — Verify expected outcomes by querying the context or inspecting entities
 
+## Context Setup (Required Before Any Test)
+
+`FakeXrmEasyTestsBase` does NOT exist in FakeXrmEasy v2.x or v3.x. Always build `_context` in the
+class constructor via `MiddlewareBuilder`:
+
+```csharp
+using FakeXrmEasy.Abstractions;
+using FakeXrmEasy.Abstractions.Enums;
+using FakeXrmEasy.Middleware;
+using FakeXrmEasy.Middleware.Crud;
+using FakeXrmEasy.Plugins;
+
+public class MyPluginTests
+{
+    private readonly IXrmFakedContext _context;
+    private readonly IOrganizationService _service;
+
+    public MyPluginTests()
+    {
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+
+        _service = _context.GetOrganizationService();
+    }
+}
+```
+
 ## Basic Plugin Execution
 
-### ExecutePluginWith — Full Control
+### ExecutePluginWith — Full Control (Preferred)
 
-Use when you need complete control over the plugin execution context:
+Use when you need control over MessageName, Stage, PreEntityImages, or other context properties.
+Build a `XrmFakedPluginExecutionContext` directly (or use `_context.GetDefaultPluginContext()` as
+a starting point and mutate its properties):
 
 ```csharp
 [Fact]
@@ -23,58 +55,76 @@ public void When_Account_Created_Should_Set_Account_Number()
 {
     // ARRANGE
     var accountId = Guid.NewGuid();
-    var target = new Account { Id = accountId, Name = "Contoso" };
-    
-    var pluginContext = _context.GetDefaultPluginContext();
-    pluginContext.MessageName = "Create";
-    pluginContext.Stage = 20; // PreOperation
-    pluginContext.PrimaryEntityName = "account";
-    pluginContext.InputParameters["Target"] = target;
-    pluginContext.OutputParameters["id"] = accountId;
-    
+    var target = new Entity("account") { Id = accountId, ["name"] = "Contoso" };
+
+    var pluginContext = new XrmFakedPluginExecutionContext
+    {
+        MessageName      = "Create",
+        Stage            = 20, // PreOperation
+        InputParameters  = new ParameterCollection { { "Target", target } },
+        PreEntityImages  = new EntityImageCollection(),
+        PostEntityImages = new EntityImageCollection()
+    };
+
     // ACT
     _context.ExecutePluginWith<AccountNumberPlugin>(pluginContext);
-    
-    // ASSERT
-    Assert.NotNull(target.AccountNumber);
-    Assert.StartsWith("ACC-", target.AccountNumber);
+
+    // ASSERT — PreOperation plugin mutates Target directly; assert on same reference
+    Assert.True(target.Contains("accountnumber"));
+    Assert.StartsWith("ACC-", target["accountnumber"] as string);
 }
 ```
 
 **When to use:**
-- Testing specific stages (PreValidation, PreOperation, PostOperation)
+
+- Testing specific stages (PreValidation = 10, PreOperation = 20, PostOperation = 40)
 - Testing specific messages (Create, Update, Delete, custom actions)
+- Need to supply PreEntityImages or PostEntityImages
 - Need to set SharedVariables, ParentContext, or other context properties
-- Testing conditional logic based on message or stage
+
+### Passing a PreImage
+
+`ExecutePluginWithTargetAndPreEntityImages` is `[Obsolete]` in v2.6+. Use `ExecutePluginWith`
+with `PreEntityImages` populated on the context:
+
+```csharp
+var preImage = new Entity("contact", contactId) { ["statuscode"] = new OptionSetValue(1) };
+
+var pluginContext = new XrmFakedPluginExecutionContext
+{
+    MessageName      = "Update",
+    Stage            = 20,
+    InputParameters  = new ParameterCollection { { "Target", target } },
+    PreEntityImages  = new EntityImageCollection { { "PreImage", preImage } },
+    PostEntityImages = new EntityImageCollection()
+};
+
+_context.ExecutePluginWith<ContactStatusPlugin>(pluginContext);
+```
 
 ### ExecutePluginWithTarget — Simple Scenarios
 
-Use for simple plugins that just need a Target entity:
+Use only for plugins that have no PreImage dependency and no stage-specific logic. Note that
+`messageName` and `stage` are **required** parameters in v2.x/v3.x:
 
 ```csharp
 [Fact]
 public void When_Target_Is_Account_Should_Set_Default_Values()
 {
     // ARRANGE
-    var account = new Account { Id = Guid.NewGuid(), Name = "Contoso" };
-    
-    // ACT
-    _context.ExecutePluginWithTarget<DefaultValuesPlugin>(account);
-    
+    var account = new Entity("account") { Id = Guid.NewGuid(), ["name"] = "Contoso" };
+
+    // ACT — must pass messageName and stage explicitly
+    _context.ExecutePluginWithTarget<DefaultValuesPlugin>(account, "Create", 20);
+
     // ASSERT
-    Assert.Equal("Default Industry", account.IndustryCode?.Value);
-    Assert.NotNull(account.CreatedOn);
+    Assert.True(account.Contains("new_defaultfield"));
 }
 ```
 
-**When to use:**
-- Simple plugins with minimal context dependencies
-- Plugins that only read/modify the Target entity
-- Quick smoke tests
-
 **Limitations:**
-- Can't control Stage, MessageName, or other context properties
-- Uses default plugin context
+
+- Cannot supply PreEntityImages or PostEntityImages (use `ExecutePluginWith` instead)
 - Less representative of real plugin execution
 
 ## Assertion Strategies

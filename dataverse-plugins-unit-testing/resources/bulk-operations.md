@@ -9,6 +9,7 @@ bulk operations are the **preferred approach** for plugin logic that processes m
 ## Why Bulk Operations?
 
 Traditional approach (inefficient):
+
 ```csharp
 // DON'T DO THIS - Multiple round trips
 foreach (var account in accounts)
@@ -18,6 +19,7 @@ foreach (var account in accounts)
 ```
 
 Bulk operations approach (efficient):
+
 ```csharp
 // DO THIS - Single round trip
 var request = new CreateMultipleRequest
@@ -28,6 +30,7 @@ service.Execute(request);
 ```
 
 **Benefits:**
+
 - Fewer round trips to Dataverse
 - Better performance (up to 10x faster)
 - Reduced transaction overhead
@@ -38,12 +41,21 @@ service.Execute(request);
 Bulk operations are automatically available when using `.AddCrud()` and `.UseCrud()` in middleware:
 
 ```csharp
-public class BulkOperationsTestsBase : FakeXrmEasyTestsBase
+public class BulkOperationsTests
 {
-    public BulkOperationsTestsBase()
+    private readonly IXrmFakedContext _context;
+    private readonly IOrganizationService _service;
+
+    public BulkOperationsTests()
     {
-        // No special setup needed - bulk operations enabled by default
-        // when you use AddCrud() and UseCrud()
+        // Bulk operations are enabled by default when using AddCrud()
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+
+        _service = _context.GetOrganizationService();
     }
 }
 ```
@@ -312,6 +324,7 @@ Plugins that fire on bulk operations use a new interface: **IPluginExecutionCont
 ### IPluginExecutionContext4 Features
 
 New properties for bulk operations:
+
 - `EntityCollection Targets` - Multiple target entities (instead of single Target)
 - `EntityImageCollection PreEntityImagesCollection` - PreImages for each target
 - `EntityImageCollection PostEntityImagesCollection` - PostImages for each target
@@ -544,6 +557,7 @@ public void Should_Handle_Mixed_Valid_Invalid_Records()
 ### Converting Individual Operations to Bulk
 
 Before (inefficient):
+
 ```csharp
 public void UpdateAccountRevenues(List<Guid> accountIds, decimal newRevenue)
 {
@@ -555,6 +569,7 @@ public void UpdateAccountRevenues(List<Guid> accountIds, decimal newRevenue)
 ```
 
 After (efficient):
+
 ```csharp
 public void UpdateAccountRevenues(List<Guid> accountIds, decimal newRevenue)
 {

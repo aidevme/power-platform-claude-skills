@@ -99,23 +99,40 @@ FakeXrmEasy works with all major .NET test frameworks:
 
 Most popular for .NET plugin testing. Clean, extensible, parallel execution.
 
+> **Note:** `FakeXrmEasyTestsBase` does NOT exist in FakeXrmEasy v2.x or v3.x NuGet packages.
+> Always build the context manually via `MiddlewareBuilder`.
+
 ```csharp
 using Xunit;
-using FakeXrmEasy;
+using FakeXrmEasy.Abstractions;
+using FakeXrmEasy.Abstractions.Enums;
+using FakeXrmEasy.Middleware;
+using FakeXrmEasy.Middleware.Crud;
 using FakeXrmEasy.Plugins;
 
-public class AccountNumberPluginTests : FakeXrmEasyTestsBase
+public class AccountNumberPluginTests
 {
+    private readonly IXrmFakedContext _context;
+
+    public AccountNumberPluginTests()
+    {
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+    }
+
     [Fact]
     public void Should_Generate_Account_Number_On_Create()
     {
         // Test implementation
     }
-    
+
     [Theory]
-    [InlineData("Contoso", "ACC-CONTOSO")]
-    [InlineData("Fabrikam", "ACC-FABRIKAM")]
-    public void Should_Generate_Account_Number_Based_On_Name(string name, string expected)
+    [InlineData("ACC-12345678")]
+    [InlineData("ACC-ABCDEF12")]
+    public void Should_Preserve_Existing_Account_Number(string existingNumber)
     {
         // Theory tests multiple scenarios
     }
@@ -128,11 +145,26 @@ Alternative with similar features. Use `[TestFixture]` instead of class-level at
 
 ```csharp
 using NUnit.Framework;
-using FakeXrmEasy;
+using FakeXrmEasy.Abstractions;
+using FakeXrmEasy.Abstractions.Enums;
+using FakeXrmEasy.Middleware;
+using FakeXrmEasy.Middleware.Crud;
 
 [TestFixture]
-public class AccountNumberPluginTests : FakeXrmEasyTestsBase
+public class AccountNumberPluginTests
 {
+    private IXrmFakedContext _context;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+    }
+
     [Test]
     public void Should_Generate_Account_Number_On_Create()
     {
@@ -147,11 +179,26 @@ Built into Visual Studio. Use `[TestClass]` and `[TestMethod]`.
 
 ```csharp
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using FakeXrmEasy;
+using FakeXrmEasy.Abstractions;
+using FakeXrmEasy.Abstractions.Enums;
+using FakeXrmEasy.Middleware;
+using FakeXrmEasy.Middleware.Crud;
 
 [TestClass]
-public class AccountNumberPluginTests : FakeXrmEasyTestsBase
+public class AccountNumberPluginTests
 {
+    private IXrmFakedContext _context;
+
+    [TestInitialize]
+    public void TestInitialize()
+    {
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+    }
+
     [TestMethod]
     public void Should_Generate_Account_Number_On_Create()
     {
@@ -165,34 +212,42 @@ public class AccountNumberPluginTests : FakeXrmEasyTestsBase
 Create a shared base class for common setup:
 
 ```csharp
-using FakeXrmEasy;
+using FakeXrmEasy.Abstractions;
+using FakeXrmEasy.Abstractions.Enums;
+using FakeXrmEasy.Middleware;
+using FakeXrmEasy.Middleware.Crud;
 using System.Reflection;
 
-public abstract class PluginTestBase : FakeXrmEasyTestsBase
+public abstract class PluginTestBase
 {
+    protected readonly IXrmFakedContext _context;
+
     protected PluginTestBase()
     {
-        // Enable early-bound entities
+        _context = MiddlewareBuilder
+            .New()
+            .AddCrud()
+            .SetLicense(FakeXrmEasyLicense.RPL_1_5)
+            .Build();
+
+        // Enable early-bound entities (optional)
         _context.EnableProxyTypes(Assembly.GetExecutingAssembly());
-        
-        // Optional: Set organization name for tests that check it
-        _context.OrganizationName = "TestOrg";
     }
-    
+
     protected Guid CreateTestAccount(string name)
     {
         var account = new Account { Id = Guid.NewGuid(), Name = name };
         _context.Initialize(new[] { account });
         return account.Id;
     }
-    
+
     protected Contact CreateTestContact(string firstName, string lastName)
     {
-        var contact = new Contact 
-        { 
-            Id = Guid.NewGuid(), 
+        var contact = new Contact
+        {
+            Id = Guid.NewGuid(),
             FirstName = firstName,
-            LastName = lastName 
+            LastName = lastName
         };
         _context.Initialize(new[] { contact });
         return contact;
@@ -313,7 +368,7 @@ _context.UserTimeZoneCode = 85; // Pacific Standard Time
 
 ### Tests run slow
 
-- Don't create new context per test. Inherit from `FakeXrmEasyTestsBase`.
+- Create the context once per class in the constructor (xUnit) or `[SetUp]`/`[TestInitialize]` (NUnit/MSTest).
 - Use `Initialize()` with small datasets, not thousands of records.
 - Parallelize tests (xUnit does this by default).
 
